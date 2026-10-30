@@ -1,0 +1,1685 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Urja Meter API",
+    "version": "0.1.0",
+    "description": "A clean, read-only REST API over the legacy **Urja Meter Ops** portal.\n\n* Fleet data (meters, network hierarchy, transformers) is served from a local snapshot built from the portal's bulk export and refreshed in the background. Responses carry `X-Snapshot-Age` (seconds). If the portal is down, the last good snapshot keeps being served.\n* Consumption is fetched live from the portal per meter and cached briefly.\n* Known data problems in the portal are repaired where safe, flagged per meter in `quality_flags`, and listed at `GET /data-quality`.\n\nAll JSON is snake_case; enums are lower-case slugs; timestamps are ISO-8601 with offset. Errors are always `{\"error\",\"message\"}`."
+  },
+  "paths": {
+    "/meters": {
+      "get": {
+        "summary": "Search and filter meters",
+        "tags": [
+          "Meters"
+        ],
+        "operationId": "get_meters",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Substring of meter id or serial number.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "installed",
+                "faulty",
+                "decommissioned"
+              ]
+            }
+          },
+          {
+            "name": "make",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive, e.g. 'l&t'.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "phase_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "single",
+                "three"
+              ]
+            }
+          },
+          {
+            "name": "install_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "whole_current",
+                "ct_operated"
+              ]
+            }
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "circle",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "division",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "subdivision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "substation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "feeder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "dt",
+            "in": "query",
+            "required": false,
+            "description": "DT code, e.g. DT-007.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "description": "Hierarchy path (from /hierarchy) to restrict to a subtree. Prefer this to the per-level codes, which repeat under different parents.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "quality_flag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hierarchy_repaired",
+                "hierarchy_incomplete",
+                "dt_name_conflict",
+                "location_missing",
+                "record_rejected"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Meter"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meters/nearby": {
+      "get": {
+        "summary": "Meters near a location, closest first",
+        "tags": [
+          "Meters"
+        ],
+        "operationId": "get_meters_nearby",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "radius_km",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NearbyMeter"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meters/{meter_id}": {
+      "get": {
+        "summary": "One meter",
+        "tags": [
+          "Meters"
+        ],
+        "operationId": "get_meters_meter_id",
+        "parameters": [
+          {
+            "name": "meter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meter"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meters/{meter_id}/consumption": {
+      "get": {
+        "summary": "Meter readings with derived per-interval consumption",
+        "tags": [
+          "Meters"
+        ],
+        "operationId": "get_meters_meter_id_consumption",
+        "parameters": [
+          {
+            "name": "meter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "First day, inclusive (YYYY-MM-DD). Omit both bounds for the portal's default window (about the last 7 days of available data).",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Last day, inclusive (YYYY-MM-DD).",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Consumption"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hierarchy": {
+      "get": {
+        "summary": "Network hierarchy: zone > circle > division > subdivision > substation > feeder > DT",
+        "tags": [
+          "Network"
+        ],
+        "operationId": "get_hierarchy",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "description": "Return only the subtree at this path.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "max_depth",
+            "in": "query",
+            "required": false,
+            "description": "Levels to include.",
+            "schema": {
+              "default": 7,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TreeNode"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transformers": {
+      "get": {
+        "summary": "Distribution transformers (DT registry joined with meter counts)",
+        "tags": [
+          "Network"
+        ],
+        "operationId": "get_transformers",
+        "parameters": [
+          {
+            "name": "feeder_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Transformer"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "page_size": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transformers/{code}": {
+      "get": {
+        "summary": "One transformer",
+        "tags": [
+          "Network"
+        ],
+        "operationId": "get_transformers_code",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transformer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data-quality": {
+      "get": {
+        "summary": "Problems found in the portal data, and what we did about them",
+        "tags": [
+          "Operations"
+        ],
+        "operationId": "get_data_quality",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataQualityReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Service health (never calls the portal)",
+        "tags": [
+          "Operations"
+        ],
+        "operationId": "get_health",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/refresh": {
+      "post": {
+        "summary": "Drop caches and re-read the portal now",
+        "tags": [
+          "Operations"
+        ],
+        "operationId": "post_admin_refresh",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The portal behaved unexpectedly or rejected our login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The portal is unavailable; see Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Consumption": {
+        "type": "object",
+        "properties": {
+          "meter_id": {
+            "type": "string"
+          },
+          "interval_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Detected reading cadence (median spacing). 30 or 1440 in practice; null with fewer than two readings."
+          },
+          "count": {
+            "type": "integer"
+          },
+          "readings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnergyReading"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/EnergySummary"
+          }
+        },
+        "required": [
+          "meter_id",
+          "interval_minutes",
+          "count",
+          "readings",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "DataQualityIssue": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "hierarchy_repaired",
+              "hierarchy_incomplete",
+              "dt_name_conflict",
+              "location_missing",
+              "record_rejected"
+            ]
+          },
+          "meter_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "meter_id",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "DataQualityReport": {
+        "type": "object",
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotInfo"
+          },
+          "meter_count": {
+            "type": "integer"
+          },
+          "counts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "hierarchy_repaired",
+                "hierarchy_incomplete",
+                "dt_name_conflict",
+                "location_missing",
+                "record_rejected"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "required": [
+              "hierarchy_repaired",
+              "hierarchy_incomplete",
+              "dt_name_conflict",
+              "location_missing",
+              "record_rejected"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataQualityIssue"
+            }
+          }
+        },
+        "required": [
+          "snapshot",
+          "meter_count",
+          "counts",
+          "issues"
+        ],
+        "additionalProperties": false
+      },
+      "EnergyReading": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "Portal local time, made explicit with an offset."
+          },
+          "kwh": {
+            "description": "Cumulative import register, kWh.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "kvah": {
+            "description": "Cumulative apparent-energy register, kVAh.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "voltage_r": {
+            "description": "R-phase voltage, V.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "kwh_delta": {
+            "description": "kWh used since the previous reading; null for the first reading, missing values and register resets.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "kvah_delta": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "timestamp",
+          "kwh",
+          "kvah",
+          "voltage_r",
+          "kwh_delta",
+          "kvah_delta"
+        ],
+        "additionalProperties": false
+      },
+      "EnergySummary": {
+        "type": "object",
+        "properties": {
+          "consumption_kwh": {
+            "description": "Sum of kwh_delta over the window.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "avg_voltage_r": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_voltage_r": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_voltage_r": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "missing_values": {
+            "type": "integer",
+            "description": "Readings with a blank kWh, kVAh or voltage."
+          },
+          "register_resets": {
+            "type": "integer",
+            "description": "Readings where the cumulative kWh went down."
+          },
+          "gaps": {
+            "type": "integer",
+            "description": "Places where consecutive readings are > 1.5x the cadence apart."
+          }
+        },
+        "required": [
+          "consumption_kwh",
+          "avg_voltage_r",
+          "min_voltage_r",
+          "max_voltage_r",
+          "missing_values",
+          "register_resets",
+          "gaps"
+        ],
+        "additionalProperties": false
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ]
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_refresh_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "portal_session_age_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "snapshot",
+          "last_refresh_error",
+          "portal_session_age_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "Hierarchy": {
+        "type": "object",
+        "properties": {
+          "zone": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "circle": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "division": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "subdivision": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "substation": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "feeder": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "dt": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "example": "C-05",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "example": "Circle 5",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "path": {
+            "type": "string",
+            "description": "Codes joined with '/', zone first. Unique per node; individual codes are not (e.g. division D-01 exists under several circles). Unknown codes appear as '?'.",
+            "example": "Z-02/C-05/D-05/SD-05/SS-05/F-005/DT-005"
+          }
+        },
+        "required": [
+          "zone",
+          "circle",
+          "division",
+          "subdivision",
+          "substation",
+          "feeder",
+          "dt",
+          "path"
+        ],
+        "additionalProperties": false,
+        "description": "Where a meter sits in the network, zone down to distribution transformer."
+      },
+      "Location": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "additionalProperties": false
+      },
+      "Meter": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "J100004"
+          },
+          "serial_no": {
+            "type": "string"
+          },
+          "make": {
+            "type": "string",
+            "example": "Genus"
+          },
+          "phase_type": {
+            "type": "string",
+            "enum": [
+              "single",
+              "three"
+            ]
+          },
+          "install_status": {
+            "type": "string",
+            "enum": [
+              "installed",
+              "faulty",
+              "decommissioned"
+            ]
+          },
+          "install_type": {
+            "type": "string",
+            "enum": [
+              "whole_current",
+              "ct_operated"
+            ]
+          },
+          "dt_code": {
+            "type": "string"
+          },
+          "hierarchy": {
+            "$ref": "#/components/schemas/Hierarchy"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality_flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hierarchy_repaired",
+                "hierarchy_incomplete",
+                "dt_name_conflict",
+                "location_missing",
+                "record_rejected"
+              ]
+            },
+            "description": "Known problems with this record in the portal data. See GET /data-quality."
+          }
+        },
+        "required": [
+          "id",
+          "serial_no",
+          "make",
+          "phase_type",
+          "install_status",
+          "install_type",
+          "dt_code",
+          "hierarchy",
+          "location",
+          "quality_flags"
+        ],
+        "additionalProperties": false
+      },
+      "NearbyMeter": {
+        "type": "object",
+        "properties": {
+          "distance_km": {
+            "type": "number"
+          },
+          "meter": {
+            "$ref": "#/components/schemas/Meter"
+          }
+        },
+        "required": [
+          "distance_km",
+          "meter"
+        ],
+        "additionalProperties": false
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "not_found"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "SnapshotInfo": {
+        "type": "object",
+        "properties": {
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "age_seconds": {
+            "type": "number"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "True if older than the TTL (a refresh is in flight or failing)."
+          }
+        },
+        "required": [
+          "fetched_at",
+          "age_seconds",
+          "stale"
+        ],
+        "additionalProperties": false
+      },
+      "Transformer": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "DT-007"
+          },
+          "name": {
+            "type": "string"
+          },
+          "feeder_code": {
+            "type": "string"
+          },
+          "capacity_kva": {
+            "type": "number"
+          },
+          "path": {
+            "description": "Hierarchy path of the DT, if any meter is on it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meter_count": {
+            "type": "integer"
+          },
+          "status_counts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "installed",
+                "faulty",
+                "decommissioned"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "required": [
+              "installed",
+              "faulty",
+              "decommissioned"
+            ]
+          },
+          "quality_flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hierarchy_repaired",
+                "hierarchy_incomplete",
+                "dt_name_conflict",
+                "location_missing",
+                "record_rejected"
+              ]
+            }
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "feeder_code",
+          "capacity_kva",
+          "path",
+          "meter_count",
+          "status_counts",
+          "quality_flags"
+        ],
+        "additionalProperties": false
+      },
+      "TreeNode": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "zone",
+              "circle",
+              "division",
+              "subdivision",
+              "substation",
+              "feeder",
+              "dt"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Pass to GET /meters?path= to list the meters under this node."
+          },
+          "meter_count": {
+            "type": "integer"
+          },
+          "status_counts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "installed",
+                "faulty",
+                "decommissioned"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "required": [
+              "installed",
+              "faulty",
+              "decommissioned"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            }
+          }
+        },
+        "required": [
+          "level",
+          "code",
+          "name",
+          "path",
+          "meter_count",
+          "status_counts",
+          "children"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

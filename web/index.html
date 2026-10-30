@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urja Meter Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg:#f6f7f9; --surface:#fff; --ink:#1b2430; --ink2:#55606e; --line:#dde1e6; --grid:#e8ebef;
+    --installed:#2a8a4f; --faulty:#c8352b; --decommissioned:#8a94a0; --series:#2f6fb5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161b; --surface:#1b2128; --ink:#e8ecf0; --ink2:#9aa5b1; --line:#2b333c; --grid:#262d35;
+      --installed:#4cb97a; --faulty:#ee6a5f; --decommissioned:#7d8794; --series:#6ea8e8; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; font:14px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--ink) }
+  header { padding:12px 16px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; border-bottom:1px solid var(--line); background:var(--surface) }
+  h1 { font-size:16px; margin:0 8px 0 0 }
+  .tile { display:flex; gap:6px; align-items:center; color:var(--ink2) }
+  .tile b { color:var(--ink); font-size:16px }
+  .dot { width:10px; height:10px; border-radius:50%; display:inline-block }
+  .tile button { all:unset; cursor:pointer; display:flex; gap:6px; align-items:center; padding:2px 8px; border-radius:6px; border:1px solid transparent }
+  .tile button[aria-pressed=true] { border-color:var(--ink2) }
+  main { display:grid; grid-template-columns:1fr 420px; height:calc(100vh - 52px) }
+  #map { height:100% }
+  aside { overflow:auto; padding:16px; background:var(--surface); border-left:1px solid var(--line) }
+  aside h2 { font-size:15px; margin:0 0 4px }
+  .muted { color:var(--ink2) } .path { font-size:12px; word-break:break-all }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:12px 0 }
+  dt { color:var(--ink2) }
+  dd { margin:0 }
+  .flag { display:inline-block; font-size:12px; padding:1px 8px; border:1px solid var(--faulty); color:var(--ink); border-radius:10px; margin-right:4px }
+  canvas { max-height:220px }
+  label { font-size:12px; color:var(--ink2) } input[type=date] { font:inherit; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:4px }
+  @media (max-width:800px) { main { grid-template-columns:1fr; grid-template-rows:50vh auto; height:auto } aside { border-left:0 } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Urja Meter Explorer</h1>
+  <div class="tile" id="tiles"></div>
+  <span class="muted" id="quality"></span>
+</header>
+<main>
+  <div id="map" role="application" aria-label="Map of meters"></div>
+  <aside id="panel"><p class="muted">Click a meter on the map to see its position in the network and its consumption.</p></aside>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const STATUSES = ["installed", "faulty", "decommissioned"];
+const api = async p => { const r = await fetch(p); if (!r.ok) throw new Error((await r.json()).message); return r.json(); };
+let meters = [], markers = new Map(), active = new Set(STATUSES), chart;
+
+const map = L.map("map").setView([26.91, 75.79], 11);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+
+async function load() {
+  // The API caps page_size at 200, so page through the fleet.
+  for (let page = 1; ; page++) {
+    const body = await api(`/meters?page=${page}&page_size=200`);
+    meters.push(...body.items);
+    if (meters.length >= body.total) break;
+  }
+  for (const m of meters) {
+    if (!m.location) continue;
+    const mk = L.circleMarker([m.location.lat, m.location.lng], { radius: 7, weight: 2, fillOpacity: .85 })
+      .on("click", () => select(m.id)).bindTooltip(`${m.id} · ${m.install_status}`);
+    mk.addTo(map); markers.set(m.id, mk);
+  }
+  paint(); tiles();
+  const q = await api("/data-quality");
+  const c = q.counts;
+  document.getElementById("quality").textContent =
+    `Data quality: ${c.hierarchy_repaired} hierarchy repairs, ${c.dt_name_conflict} DT-name conflicts`;
+}
+
+function paint() {
+  for (const m of meters) {
+    const mk = markers.get(m.id); if (!mk) continue;
+    const on = active.has(m.install_status), col = css(`--${m.install_status}`);
+    mk.setStyle({ color: css("--surface"), fillColor: col, opacity: on ? 1 : 0, fillOpacity: on ? .85 : 0 });
+    mk.options.interactive = on;
+  }
+}
+
+function tiles() {
+  const counts = Object.fromEntries(STATUSES.map(s => [s, meters.filter(m => m.install_status === s).length]));
+  const el = document.getElementById("tiles"); el.innerHTML = "";
+  for (const s of STATUSES) {
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed", active.has(s));
+    b.innerHTML = `<span class="dot" style="background:var(--${s})"></span><b>${counts[s]}</b> ${s}`;
+    b.onclick = () => { active.has(s) ? active.delete(s) : active.add(s); paint(); tiles(); };
+    el.append(b);
+  }
+}
+
+async function select(id) {
+  const m = await api(`/meters/${id}`), h = m.hierarchy;
+  const panel = document.getElementById("panel");
+  const lv = ["zone", "circle", "division", "subdivision", "substation", "feeder", "dt"];
+  panel.innerHTML = `
+    <h2>${m.id}</h2>
+    <div class="muted path">${lv.map(l => h[l].name || h[l].code || "?").join(" › ")}</div>
+    <dl>
+      <dt>Status</dt><dd><span class="dot" style="background:var(--${m.install_status})"></span> ${m.install_status}</dd>
+      <dt>Serial</dt><dd>${m.serial_no}</dd><dt>Make</dt><dd>${m.make}</dd>
+      <dt>Phase</dt><dd>${m.phase_type}</dd><dt>Install type</dt><dd>${m.install_type.replace("_", " ")}</dd>
+      <dt>DT</dt><dd>${h.dt.name} (${h.dt.code})</dd>
+    </dl>
+    ${m.quality_flags.map(f => `<span class="flag">${f.replace(/_/g, " ")}</span>`).join("")}
+    <h2 style="margin-top:16px">Consumption</h2>
+    <div><label>From <input type="date" id="from" min="2026-06-01" max="2026-06-30" value="2026-06-01"></label>
+    <label>to <input type="date" id="to" min="2026-06-01" max="2026-06-30" value="2026-06-30"></label></div>
+    <p class="muted" id="summary">Loading…</p><canvas id="chart"></canvas>`;
+  const go = () => consumption(id);
+  panel.querySelector("#from").onchange = go; panel.querySelector("#to").onchange = go;
+  go();
+}
+
+async function consumption(id) {
+  const from = document.getElementById("from").value, to = document.getElementById("to").value;
+  const sum = document.getElementById("summary");
+  try {
+    const c = await api(`/meters/${id}/consumption?from=${from}&to=${to}`);
+    // Half-hourly meters are rolled up to days so every meter is comparable; daily meters pass through.
+    const days = new Map();
+    for (const r of c.readings) {
+      const d = r.timestamp.slice(0, 10);
+      days.set(d, (days.get(d) || 0) + (r.kwh_delta || 0));
+    }
+    const s = c.summary;
+    sum.textContent = c.count
+      ? `${s.consumption_kwh} kWh over the window · ${c.interval_minutes === 30 ? "half-hourly" : "daily"} readings · ${s.avg_voltage_r} V avg`
+      : "No readings in this window.";
+    chart && chart.destroy();
+    Chart.defaults.color = css("--ink2");
+    chart = new Chart(document.getElementById("chart"), {
+      type: "line",
+      data: { labels: [...days.keys()].map(d => d.slice(5)), datasets: [{ label: "kWh per day", data: [...days.values()],
+        borderColor: css("--series"), borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: .2 }] },
+      options: { animation: false, interaction: { mode: "index", intersect: false }, plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { title: { display: true, text: "kWh per day" }, grid: { color: css("--grid") } } } },
+    });
+  } catch (e) { sum.textContent = e.message; }
+}
+load().catch(e => document.getElementById("quality").textContent = "Failed to load: " + e.message);
+</script>
+</body>
+</html>
