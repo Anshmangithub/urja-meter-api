@@ -1,10 +1,3 @@
-/**
- * Turns the portal's raw export + DT registry into a clean, queryable in-memory snapshot.
- *
- * The portal data is messy (blank hierarchy levels, a DT code claimed by two different
- * transformer names). All repair rules live in `buildSnapshot`, and everything we change or
- * cannot resolve is flagged on the meter and listed in the data-quality report.
- */
 import {
   INSTALL_TYPES,
   LEVELS,
@@ -24,7 +17,6 @@ import {
 import type { RawRow } from "./portal.js";
 
 export interface SearchFilters {
-  /** Case-insensitive substring of meter id or serial number. */
   q?: string;
   status?: string;
   make?: string;
@@ -45,7 +37,6 @@ export class Snapshot {
     readonly issues: DataQualityIssue[],
   ) {}
 
-  /** AND-combine filters. */
   search(f: SearchFilters): Meter[] {
     const needle = f.q?.trim().toLowerCase();
     const levels = Object.entries(f.levels ?? {}) as [Level, string][];
@@ -64,7 +55,6 @@ export class Snapshot {
     return out;
   }
 
-  /** Linear scan: trivial at ~400 meters. The README says where this stops scaling. */
   nearby(lat: number, lng: number, radiusKm: number, limit: number): NearbyMeter[] {
     const hits: NearbyMeter[] = [];
     for (const m of this.meters.values()) {
@@ -84,7 +74,6 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
   return 6371.0088 * 2 * Math.asin(Math.sqrt(a));
 }
 
-// ------------------------------------------------------------------ building
 
 export function buildSnapshot(rawMeters: RawRow[], rawDts: RawRow[]): Snapshot {
   const registry = new Map(rawDts.map((d) => [String(d.code), d]));
@@ -99,7 +88,6 @@ export function buildSnapshot(rawMeters: RawRow[], rawDts: RawRow[]): Snapshot {
       meters.set(meter.id, meter);
       issues.push(...found);
     } catch (e) {
-      // One malformed record must not take the whole service down.
       issues.push({
         kind: "record_rejected",
         meter_id: raw.meterId == null ? null : String(raw.meterId),
@@ -112,14 +100,8 @@ export function buildSnapshot(rawMeters: RawRow[], rawDts: RawRow[]): Snapshot {
 
 type Rec = Record<string, unknown>;
 
-/**
- * Fills blank hierarchy codes/names using what other meters say about the same node.
- * Two facts hold in the portal data and make this safe:
- *   - all meters on one DT share one ancestry chain (checked: blanks are the only difference);
- *   - within a level, name <-> code is one-to-one.
- */
 class HierarchyResolver {
-  private chain = new Map<string, Set<string>>(); // `${dt}|${level}|code|name` -> values
+  private chain = new Map<string, Set<string>>();
   private nameToCode = new Map<string, Set<string>>();
   private codeToName = new Map<string, Set<string>>();
 
@@ -189,7 +171,6 @@ function buildMeter(
     if (!ref.code || !ref.name) missingLevels.push(lv);
   }
 
-  // The DT registry is the authority on transformer names.
   const dtCode = required(raw, "dtCode");
   const observed = refs.dt.name;
   const reg = registry.get(dtCode);
@@ -244,7 +225,6 @@ function required(raw: RawRow, key: string): string {
   return String(v);
 }
 
-/** 'Whole Current' -> 'whole_current', then check it is a value we know. */
 function oneOf<T extends string>(allowed: readonly T[], value: unknown, field: string): T {
   const slug = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "_");
   if (!(allowed as readonly string[]).includes(slug)) throw new Error(`unknown ${field} '${String(value)}'`);
@@ -278,7 +258,6 @@ function buildTransformers(meters: Map<string, Meter>, registry: Map<string, Raw
   return out;
 }
 
-/** Nodes are identified by their full path, because codes repeat under different parents. */
 function buildTree(meters: Map<string, Meter>): TreeNode[] {
   const nodes = new Map<string, TreeNode>();
   const roots: TreeNode[] = [];

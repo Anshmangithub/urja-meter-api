@@ -1,4 +1,3 @@
-/** Application service: ties the portal client, caches and snapshot together. */
 import { AsyncCache } from "./cache.js";
 import type { Settings } from "./config.js";
 import { buildConsumption } from "./energy.js";
@@ -18,7 +17,6 @@ export class Gateway {
     readonly portal: PortalClient,
   ) {}
 
-  /** Fleet data from the bulk export. Served stale while refreshing in the background. */
   snapshot(): Promise<Snapshot> {
     return this.snapshots.get(SNAPSHOT_KEY, () => this.loadSnapshot(), this.settings.snapshotTtlMs, { swr: true });
   }
@@ -28,7 +26,6 @@ export class Gateway {
     return buildSnapshot(meters, dts);
   }
 
-  /** Drop caches and re-read the portal now. */
   async refresh(): Promise<Snapshot> {
     this.snapshots.clear();
     this.energy.clear();
@@ -53,7 +50,6 @@ export class Gateway {
   }
 
   async consumption(meterId: string, from?: string, to?: string): Promise<Consumption> {
-    // Unknown ids are rejected from the snapshot, saving a portal call.
     if (!(await this.snapshot()).meters.has(meterId)) throw new NotFoundError(meterId);
     return this.energy.get(
       JSON.stringify([meterId, from ?? null, to ?? null]),

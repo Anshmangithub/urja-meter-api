@@ -3,7 +3,6 @@ import { PortalUnavailable } from "./errors.js";
 export type Sleep = (ms: number) => Promise<void>;
 export const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Allow at most `limit` acquisitions per `windowMs`, queueing callers (FIFO) when full. */
 export class SlidingWindowLimiter {
   private stamps: number[] = [];
   private chain: Promise<unknown> = Promise.resolve();
@@ -16,10 +15,9 @@ export class SlidingWindowLimiter {
     private readonly sleep: Sleep = realSleep,
   ) {}
 
-  /** Resolves when a slot is free; rejects with PortalUnavailable if that would take too long. */
   acquire(): Promise<void> {
     const run = this.chain.then(() => this.take());
-    this.chain = run.catch(() => undefined); // one failed waiter must not poison the queue
+    this.chain = run.catch(() => undefined);
     return run;
   }
 

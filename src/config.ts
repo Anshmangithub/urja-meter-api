@@ -20,19 +20,13 @@ export interface Settings {
   portalEmail: string;
   portalPassword: string;
   port: number;
-  /** Fleet snapshot freshness. Changes rarely, so cached for a long time. */
   snapshotTtlMs: number;
-  /** Readings are looked up per meter and cached for a shorter time. */
   energyTtlMs: number;
-  /** The portal 429s at ~120 requests/min; stay under it with headroom for UI users. */
   rateLimitPerMin: number;
-  /** Longest we queue for a rate-limit slot before telling the caller to retry. */
   rateLimitMaxWaitMs: number;
   requestTimeoutMs: number;
   maxRetries: number;
-  /** The portal session cookie lives exactly 1h and is not renewed on use: renew early. */
   sessionTtlMs: number;
-  /** Portal timestamps carry no timezone. The utility is in Jaipur, so assume IST. */
   portalUtcOffsetMinutes: number;
 }
 

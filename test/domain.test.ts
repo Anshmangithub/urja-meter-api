@@ -105,18 +105,18 @@ describe("consumption", () => {
   it("copes with blanks, register resets, gaps and junk", () => {
     const rows = [
       { timestamp: "01/06/2026 00:00", kwh: "100", kvah: "110", voltR: "230" },
-      { timestamp: "01/06/2026 00:30", kwh: "", kvah: "111", voltR: "231" }, // blank
+      { timestamp: "01/06/2026 00:30", kwh: "", kvah: "111", voltR: "231" },
       { timestamp: "01/06/2026 01:00", kwh: "101", kvah: "112", voltR: "229" },
-      { timestamp: "01/06/2026 01:30", kwh: "5", kvah: "113", voltR: "230" }, // reset
-      { timestamp: "01/06/2026 03:30", kwh: "6", kvah: "114", voltR: "230" }, // gap
-      { timestamp: "31/02/2026 00:00", kwh: "1" }, // impossible date
+      { timestamp: "01/06/2026 01:30", kwh: "5", kvah: "113", voltR: "230" },
+      { timestamp: "01/06/2026 03:30", kwh: "6", kvah: "114", voltR: "230" },
+      { timestamp: "31/02/2026 00:00", kwh: "1" },
       { timestamp: "not a date", kwh: "1" },
     ];
     const s = buildConsumption("X", rows, IST).summary;
     expect(s.missing_values).toBe(1);
     expect(s.register_resets).toBe(1);
     expect(s.gaps).toBe(1);
-    expect(s.consumption_kwh).toBe(2); // 100->101 (skipping the blank) and 5->6
+    expect(s.consumption_kwh).toBe(2);
   });
 
   it("handles an empty window", () => {

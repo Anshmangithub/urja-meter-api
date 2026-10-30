@@ -27,7 +27,7 @@ describe("SlidingWindowLimiter", () => {
     expect(err).toBeInstanceOf(PortalUnavailable);
     expect(err.retryAfterS).toBeGreaterThanOrEqual(1);
     t = 61_000;
-    await expect(lim.acquire()).resolves.toBeUndefined(); // queue not poisoned
+    await expect(lim.acquire()).resolves.toBeUndefined();
   });
 });
 

@@ -1,12 +1,3 @@
-/**
- * Low-level client for the Urja Meter Ops portal.
- *
- * Everything the rest of the service knows about *how* the portal works lives here:
- * logging in, keeping the 1h session alive, signing bulk-export requests, pacing requests
- * under the rate limit and retrying transient failures. See PROTOCOL.md.
- *
- * axios has no cookie jar, so the single session cookie is handled by hand.
- */
 import { createHmac } from "node:crypto";
 import axios, { type AxiosAdapter, type AxiosInstance, type AxiosResponse } from "axios";
 import type { Settings } from "./config.js";
@@ -16,10 +7,8 @@ import { realSleep, SlidingWindowLimiter, type Sleep } from "./ratelimit.js";
 export const SESSION_COOKIE = "__Secure-better-auth.session_token";
 
 export interface PortalDeps {
-  /** Replace the HTTP transport (tests). */
   adapter?: AxiosAdapter;
   sleep?: Sleep;
-  /** Monotonic-ish clock in ms, for session age and rate limiting. */
   now?: () => number;
   log?: (msg: string) => void;
 }
@@ -49,7 +38,7 @@ export class PortalClient {
       timeout: s.requestTimeoutMs,
       adapter: deps.adapter,
       headers: { "User-Agent": "urja-gateway/0.1", Accept: "application/json" },
-      validateStatus: () => true, // we interpret statuses ourselves; only transport errors throw
+      validateStatus: () => true,
       maxRedirects: 0,
     });
     this.limiter = new SlidingWindowLimiter(s.rateLimitPerMin, 60_000, s.rateLimitMaxWaitMs, this.now, this.sleep);
@@ -59,14 +48,11 @@ export class PortalClient {
     return this.loggedInAt === null ? null : (this.now() - this.loggedInAt) / 1000;
   }
 
-  // ---------------------------------------------------------------- public API
 
-  /** Bulk path: every meter with hierarchy and location, in one signed request. */
   async exportMeters(): Promise<RawRow[]> {
     return expectList(await this.get("/portal/export", { page: 1 }, true), "/portal/export");
   }
 
-  /** The DT registry. Paged (20/page), so follow `total`. */
   async listTransformers(): Promise<RawRow[]> {
     const items: RawRow[] = [];
     for (let page = 1; ; page++) {
@@ -86,7 +72,6 @@ export class PortalClient {
     return expectList(body, "energy");
   }
 
-  // ---------------------------------------------------------------- session
 
   private sessionFresh(): boolean {
     return this.loggedInAt !== null && this.now() - this.loggedInAt < this.s.sessionTtlMs;
@@ -94,7 +79,6 @@ export class PortalClient {
 
   private async ensureSession(): Promise<void> {
     if (this.sessionFresh()) return;
-    // Single-flight: concurrent requests share one login.
     this.loginInFlight ??= this.login().finally(() => {
       this.loginInFlight = null;
     });
@@ -109,13 +93,10 @@ export class PortalClient {
 
   private async login(): Promise<void> {
     this.cookie = null;
-    // SvelteKit form actions reject cross-origin POSTs, so Origin is mandatory.
     const res = await this.send("POST", "/login", {
       data: new URLSearchParams({ email: this.s.portalEmail, password: this.s.portalPassword }).toString(),
       headers: { Origin: this.s.portalBaseUrl, "Content-Type": "application/x-www-form-urlencoded" },
     });
-    // Success is a 200 {"type":"redirect"} plus the session cookie. The failure response shape
-    // was never observed, so the cookie is the only success signal we rely on.
     const raw = res.headers["set-cookie"] as string[] | string | undefined;
     const cookies = Array.isArray(raw) ? raw : raw ? [raw] : [];
     const session = cookies.map((c) => c.split(";")[0]!).find((c) => c.startsWith(`${SESSION_COOKIE}=`));
@@ -135,17 +116,14 @@ export class PortalClient {
     return this.signingSecret;
   }
 
-  /** HMAC-SHA256 over "METHOD\nPATH\nQUERY\nUNIX_TS", exactly as the portal's own UI does. */
   private async sign(path: string, queryString: string): Promise<Record<string, string>> {
     const secret = await this.signingKey();
-    const ts = String(Math.floor(Date.now() / 1000)); // wall clock on purpose: the portal checks it
+    const ts = String(Math.floor(Date.now() / 1000));
     const signature = createHmac("sha256", secret).update(["GET", path, queryString, ts].join("\n")).digest("hex");
     return { "x-timestamp": ts, "x-signature": signature };
   }
 
-  // ---------------------------------------------------------------- requests
 
-  /** Authenticated GET returning decoded JSON, recovering from expired sessions. */
   private async get(path: string, query: Record<string, string | number> = {}, signed = false): Promise<unknown> {
     const queryString = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString();
     const url = queryString ? `${path}?${queryString}` : path;
@@ -167,7 +145,7 @@ export class PortalClient {
         continue;
       }
       if (res.status === 401 && err === "signature_invalid" && !resigned) {
-        this.signingSecret = null; // the secret may have rotated; refetch once
+        this.signingSecret = null;
         resigned = true;
         continue;
       }
@@ -176,10 +154,6 @@ export class PortalClient {
     }
   }
 
-  /**
-   * One HTTP exchange, paced by the limiter, retrying transient failures.
-   * Returns any response that is not a 429/5xx so the caller can interpret it.
-   */
   private async send(
     method: "GET" | "POST",
     url: string,
@@ -202,7 +176,6 @@ export class PortalClient {
         reason = e.code ?? e.name;
       }
       if (attempt === this.s.maxRetries) throw new PortalUnavailable(`Portal unavailable (${reason}) for ${url}`);
-      // 429 carries no Retry-After and its window is ~60s, so back off harder than for 5xx.
       const base = reason === "HTTP 429" ? 5000 : 500;
       const delay = Math.min(30_000, base * 2 ** (attempt - 1)) * (0.8 + Math.random() * 0.4);
       this.log(`portal ${reason} on ${url}; retry ${attempt} in ${Math.round(delay)}ms`);

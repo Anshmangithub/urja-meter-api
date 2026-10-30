@@ -1,7 +1,3 @@
-/**
- * The API surface as data. Each route declares its query schema and response schema once;
- * app.ts mounts them on Express and openapi.ts documents them from the very same definitions.
- */
 import type { Response } from "express";
 import { z } from "zod";
 import { NotFoundError } from "./errors.js";
@@ -29,13 +25,11 @@ export class ValidationError extends Error {}
 
 export interface Route {
   method: "get" | "post";
-  /** OpenAPI-style template, e.g. /meters/{meter_id}. */
   path: string;
   summary: string;
   tag: "Meters" | "Network" | "Operations";
   query?: z.ZodObject;
   response: z.ZodType;
-  /** Error statuses this route can return beyond the common 422/502/503. */
   notFound?: boolean;
   handler(ctx: { query: any; params: Record<string, string>; res: Response }): Promise<unknown>;
 }
@@ -106,7 +100,6 @@ const paginate = <T>(items: T[], page: number, pageSize: number) => ({
 });
 
 export function buildRoutes(gw: Gateway): Route[] {
-  /** Loads the snapshot and tells the caller how old it is. */
   const snap = async (res: Response): Promise<Snapshot> => {
     const s = await gw.snapshot();
     res.setHeader("X-Snapshot-Age", String(gw.snapshotInfo(s).age_seconds));

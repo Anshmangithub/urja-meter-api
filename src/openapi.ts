@@ -1,4 +1,3 @@
-/** Generates the OpenAPI 3.1 document from the route table and the zod models. */
 import { z } from "zod";
 import { ProblemSchema } from "./models.js";
 import type { Route } from "./routes.js";
@@ -15,7 +14,6 @@ All JSON is snake_case; enums are lower-case slugs; timestamps are ISO-8601 with
 
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 
-/** Point refs at components.schemas and drop the MAX_SAFE_INTEGER bounds zod adds to every integer. */
 function tidy(node: unknown): any {
   if (Array.isArray(node)) return node.map(tidy);
   if (node === null || typeof node !== "object") return node;
@@ -30,7 +28,6 @@ function tidy(node: unknown): any {
 export function buildOpenApi(routes: Route[], version: string): Json {
   const components: Record<string, Json> = {};
 
-  /** zod -> JSON Schema, hoisting named definitions into components.schemas. */
   const schemaOf = (schema: z.ZodType, io: "input" | "output" = "output"): Json => {
     const js = z.toJSONSchema(schema, { target: "draft-2020-12", io, unrepresentable: "any" }) as Json;
     const defs = js.$defs ?? {};

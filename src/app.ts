@@ -62,7 +62,6 @@ export function createApp(gw: Gateway, log: (msg: string) => void = () => undefi
   return app;
 }
 
-/** The OpenAPI document needs no live gateway: handlers are never invoked. */
 export function openApiDocument(): Record<string, unknown> {
   return buildOpenApi(buildRoutes(undefined as unknown as Gateway), VERSION);
 }

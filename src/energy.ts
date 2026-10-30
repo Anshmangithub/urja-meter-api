@@ -1,8 +1,7 @@
-/** Parsing and enrichment of the portal's half-hourly/daily energy readings. */
 import type { Consumption, EnergyReading } from "./models.js";
 import type { RawRow } from "./portal.js";
 
-const PORTAL_TS = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/; // dd/mm/yyyy HH:MM, no timezone
+const PORTAL_TS = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/;
 
 const round = (x: number, dp: number) => Math.round(x * 10 ** dp) / 10 ** dp;
 
@@ -10,7 +9,7 @@ export function buildConsumption(meterId: string, rows: RawRow[], utcOffsetMinut
   const parsed: { at: number; iso: string; kwh: number | null; kvah: number | null; volt: number | null }[] = [];
   for (const row of rows) {
     const ts = parseTimestamp(row.timestamp, utcOffsetMinutes);
-    if (!ts) continue; // a reading without a usable timestamp cannot be placed on a timeline
+    if (!ts) continue;
     parsed.push({ ...ts, kwh: num(row.kwh), kvah: num(row.kvah), volt: num(row.voltR) });
   }
   parsed.sort((a, b) => a.at - b.at);
@@ -70,14 +69,13 @@ function parseTimestamp(value: unknown, offsetMin: number): { at: number; iso: s
   if (!m) return null;
   const [, dd, mm, yyyy, hh, mi] = m;
   const at = Date.UTC(+yyyy!, +mm! - 1, +dd!, +hh!, +mi!) - offsetMin * 60_000;
-  if (Number.isNaN(at) || new Date(Date.UTC(+yyyy!, +mm! - 1, +dd!)).getUTCDate() !== +dd!) return null; // e.g. 31/02
+  if (Number.isNaN(at) || new Date(Date.UTC(+yyyy!, +mm! - 1, +dd!)).getUTCDate() !== +dd!) return null;
   const sign = offsetMin < 0 ? "-" : "+";
   const abs = Math.abs(offsetMin);
   const off = `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
   return { at, iso: `${yyyy}-${mm}-${dd}T${hh}:${mi}:00${off}` };
 }
 
-/** The portal sends numbers as strings and uses '' for 'no reading'. */
 function num(value: unknown): number | null {
   if (value == null || String(value).trim() === "") return null;
   const n = Number(value);

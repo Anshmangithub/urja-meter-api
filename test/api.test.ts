@@ -107,7 +107,7 @@ describe("API", () => {
 
   it("keeps serving the last snapshot through a portal outage", async () => {
     await get("/meters");
-    gw.settings.snapshotTtlMs = 0; // everything is now expired
+    gw.settings.snapshotTtlMs = 0;
     fake.failNext = Array(20).fill({ status: 503 });
     const r = await get("/meters");
     expect(r.status).toBe(200);

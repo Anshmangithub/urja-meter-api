@@ -1,7 +1,3 @@
-/**
- * Public response models. Zod schemas are the single source of truth: they give us the
- * TypeScript types, and they generate openapi.json, so the docs cannot drift from the code.
- */
 import { z } from "zod";
 
 export const LEVELS = ["zone", "circle", "division", "subdivision", "substation", "feeder", "dt"] as const;

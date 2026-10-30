@@ -34,7 +34,7 @@ describe("PortalClient", () => {
   it("logs in again when the portal forgets the session mid-flight", async () => {
     const c = fake.client();
     await c.exportMeters();
-    fake.sessions.clear(); // the 1h expiry
+    fake.sessions.clear();
     expect(await c.exportMeters()).toBeTruthy();
     expect(fake.logins).toBe(2);
   });
@@ -55,7 +55,7 @@ describe("PortalClient", () => {
   });
 
   it("follows DT pagination", async () => {
-    fake.dts = [...fake.dts, ...fake.dts, ...fake.dts, ...fake.dts]; // 28 rows -> 2 pages
+    fake.dts = [...fake.dts, ...fake.dts, ...fake.dts, ...fake.dts];
     expect(await fake.client().listTransformers()).toHaveLength(28);
   });
 

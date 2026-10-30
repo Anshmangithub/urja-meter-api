@@ -28,7 +28,6 @@ export const testSettings = (over: Partial<Settings> = {}): Settings => ({
 
 type Failure = { status: number; body?: unknown } | Error;
 
-/** Imitates the rules of the real portal that our client has to respect. */
 export class FakePortal {
   export: any[] = fixture("export.json");
   dts: any[] = fixture("dts.json");
@@ -36,7 +35,6 @@ export class FakePortal {
   sessions = new Set<string>();
   calls: string[] = [];
   logins = 0;
-  /** Consumed first, one per call, for any endpoint. */
   failNext: Failure[] = [];
   dtPageSize = 20;
 

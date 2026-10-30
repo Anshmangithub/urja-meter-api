@@ -1,4 +1,3 @@
-/** Regenerate openapi.json from the application (no portal access or credentials needed). */
 import { writeFileSync } from "node:fs";
 import { openApiDocument } from "../src/app.js";
 
